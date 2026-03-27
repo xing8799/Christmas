@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎄 魔法圣诞树工坊 | Magic Christmas Tree Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;700&family=Pacifico&display=swap');
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: radial-gradient(circle at center, #1a2a3a, #0f172a);
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .tree-stage {
+            perspective: 1000px;
+            transition: all 0.5s ease;
+        }
+
+        .tree-container {
+            position: relative;
+            transition: transform 0.3s ease, width 0.3s ease, height 0.3s ease;
+            filter: drop-shadow(0 20px 30px rgba(0,0,0,0.5));
+            cursor: crosshair;
+        }
+
+        .tree-decoration {
+            position: absolute;
+            cursor: grab;
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.3));
+            transition: transform 0.1s;
+            user-select: none;
+            z-index: 10;
+        }
+        .tree-decoration:active {
+            cursor: grabbing;
+            z-index: 50;
+        }
+        .tree-decoration.selected {
+            outline: 2px dashed rgba(255, 255, 255, 0.8);
+            outline-offset: 4px;
+            z-index: 100;
+        }
+
+        .asset-item {
+            transition: all 0.2s;
+        }
+        .asset-item:hover {
+            transform: scale(1.05);
+            background: rgba(255,255,255,0.1);
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .snowflake {
+            position: absolute;
+            top: -10px;
+            color: white;
+            opacity: 0.8;
+            animation: fall linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        @keyframes fall {
+            to { transform: translateY(105vh); }
+        }
+
+        input[type=range] {
+            -webkit-appearance: none; 
+            background: transparent; 
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #fbbf24;
+            cursor: pointer;
+            margin-top: -6px; 
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+        }
+
+        /* Shake animation for wrong password */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+
+        /* Success pulse */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+        .success-pulse {
+            animation: pulse-green 1s ease-out;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex text-white">
+
+    <!-- Background Snow -->
+    <div id="snow-container" class="fixed inset-0 pointer-events-none z-0"></div>
+
+    <!-- LEFT SIDEBAR: Assets -->
+    <aside class="w-80 glass-panel flex flex-col z-20 shadow-2xl border-r border-white/10">
+        <div class="p-6 border-b border-white/10">
+            <h1 class="text-2xl font-bold text-yellow-400 font-['Pacifico'] mb-1">Christmas Builder</h1>
+            <p class="text-xs text-gray-400">拖拽装饰物到右侧树上</p>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex border-b border-white/10">
+            <button onclick="switchTab('decorations')" id="tab-decorations" class="flex-1 py-3 text-sm font-medium text-yellow-400 border-b-2 border-yellow-400 bg-white/5">
+                <i class="fas fa-star mr-2"></i>配饰
+            </button>
+            <button onclick="switchTab('trees')" id="tab-trees" class="flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white">
+                <i class="fas fa-tree mr-2"></i>树形
+            </button>
+        </div>
+
+        <!-- Asset Grid -->
+        <div id="assets-grid" class="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-3 content-start">
+            <!-- Items injected by JS -->
+        </div>
+
+        <!-- Bottom Actions -->
+        <div class="p-4 border-t border-white/10 bg-black/20 space-y-2">
+            <button onclick="clearDecorations()" class="w-full py-2 px-4 bg-red-500/20 hover:bg-red-500/40 text-red-200 rounded-lg transition text-sm border border-red-500/30">
+                <i class="fas fa-trash-alt mr-2"></i>清空所有装饰
+            </button>
+            <button onclick="promptAdminAccess()" class="w-full py-2 px-4 bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 rounded-lg transition text-sm border border-blue-500/30">
+                <i class="fas fa-lock mr-2"></i>进入后台管理
+            </button>
+        </div>
+    </aside>
+
+    <!-- CENTER: Canvas Area -->
+    <main class="flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-transparent to-black/20">
+        
+        <!-- Top Toolbar -->
+        <div class="absolute top-6 left-1/2 transform -translate-x-1/2 glass-panel px-6 py-3 rounded-full flex items-center gap-6 shadow-lg z-30">
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-400 uppercase tracking-wider">尺寸</span>
+                <select id="size-selector" onchange="changeTreeSize(this.value)" class="bg-black/30 border border-white/20 rounded px-2 py-1 text-sm focus:outline-none focus:border-yellow-400">
+                    <option value="45">45cm (小型)</option>
+                    <option value="60" selected>60cm (标准)</option>
+                    <option value="90">90cm (大型)</option>
+                </select>
+            </div>
+            <div class="h-4 w-px bg-white/20"></div>
+            <div class="flex items-center gap-2">
+                <button onclick="saveDesign()" class="text-sm hover:text-yellow-400 transition"><i class="fas fa-camera mr-1"></i> 截图保存</button>
+            </div>
+        </div>
+
+        <!-- The Tree Stage -->
+        <div class="tree-stage relative" id="tree-wrapper">
+            <div id="tree-container" class="tree-container relative">
+                <!-- Tree Image -->
+                <img id="current-tree-img" src="https://images.unsplash.com/photo-1543589077-47d81606c1bf?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80" 
+                     class="w-full h-full object-contain pointer-events-none select-none" 
+                     alt="Christmas Tree">
+                
+                <!-- Drop Zone / Decoration Layer -->
+                <div id="decoration-layer" class="absolute inset-0 z-10 overflow-hidden">
+                    <!-- Decorations go here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="absolute bottom-6 text-white/30 text-sm pointer-events-none">
+            点击选中装饰物 • 拖拽移动 • 滚轮缩放 • 双击删除
+        </div>
+    </main>
+
+    <!-- RIGHT SIDEBAR: Properties (Contextual) -->
+    <aside id="properties-panel" class="w-72 glass-panel border-l border-white/10 transform translate-x-full transition-transform duration-300 absolute right-0 top-0 bottom-0 z-40 flex flex-col">
+        <div class="p-6 border-b border-white/10 flex justify-between items-center">
+            <h2 class="font-bold text-lg">编辑配饰</h2>
+            <button onclick="deselectAll()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        
+        <div class="p-6 space-y-6 flex-1 overflow-y-auto">
+            <!-- Scale -->
+            <div>
+                <div class="flex justify-between mb-2">
+                    <label class="text-xs text-gray-400 uppercase">大小 (Scale)</label>
+                    <span id="scale-val" class="text-xs font-mono">1.0x</span>
+                </div>
+                <input type="range" id="control-scale" min="0.2" max="3" step="0.1" value="1" oninput="updateSelectedDecoration('scale', this.value)">
+            </div>
+
+            <!-- Rotation -->
+            <div>
+                <div class="flex justify-between mb-2">
+                    <label class="text-xs text-gray-400 uppercase">旋转 (Rotate)</label>
+                    <span id="rotate-val" class="text-xs font-mono">0°</span>
+                </div>
+                <input type="range" id="control-rotate" min="0" max="360" step="1" value="0" oninput="updateSelectedDecoration('rotate', this.value)">
+            </div>
+
+            <!-- Layering -->
+            <div>
+                <label class="text-xs text-gray-400 uppercase block mb-2">层级 (Layer)</label>
+                <div class="flex gap-2">
+                    <button onclick="changeLayer('up')" class="flex-1 bg-white/10 hover:bg-white/20 py-2 rounded text-xs"><i class="fas fa-arrow-up"></i> 上移</button>
+                    <button onclick="changeLayer('down')" class="flex-1 bg-white/10 hover:bg-white/20 py-2 rounded text-xs"><i class="fas fa-arrow-down"></i> 下移</button>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="pt-6 border-t border-white/10">
+                <button onclick="deleteSelected()" class="w-full py-3 bg-red-500/20 hover:bg-red-500 text-red-200 hover:text-white rounded-lg transition flex items-center justify-center gap-2">
+                    <i class="fas fa-trash"></i> 删除此配饰
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- PASSWORD MODAL -->
+    <div id="password-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[60] hidden flex items-center justify-center p-4">
+        <div class="bg-[#1e293b] w-full max-w-md rounded-2xl shadow-2xl border border-white/10 p-8 transform transition-all">
+            <div class="text-center mb-8">
+                <div class="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-lock text-3xl text-blue-400"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-white mb-2">后台管理验证</h2>
+                <p class="text-sm text-gray-400">请输入管理员密码进入后台</p>
+            </div>
+
+            <div class="space-y-4">
+                <div class="relative">
+                    <input type="password" id="admin-password" 
+                           class="w-full bg-black/30 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition"
+                           placeholder="输入密码..." 
+                           onkeypress="if(event.key==='Enter')checkPassword()">
+                    <button onclick="togglePasswordVisibility()" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white">
+                        <i class="fas fa-eye" id="eye-icon"></i>
+                    </button>
+                </div>
+                
+                <div id="password-error" class="text-red-400 text-sm text-center hidden">
+                    <i class="fas fa-exclamation-circle mr-1"></i> 密码错误，请重试
+                </div>
+
+                <button onclick="checkPassword()" id="login-btn"
+                        class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-lg transition flex items-center justify-center gap-2">
+                    <span>进入后台</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+
+                <button onclick="closePasswordModal()" 
+                        class="w-full bg-transparent hover:bg-white/5 text-gray-400 py-2 rounded-lg transition text-sm">
+                    取消
+                </button>
+            </div>
+
+            <!-- First time setup hint -->
+            <div id="first-time-hint" class="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg hidden">
+                <p class="text-xs text-yellow-200">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    首次使用？默认密码是 <strong>admin123</strong><br>
+                    进入后台后可修改密码
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADMIN MODAL -->
+    <div id="admin-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-[#1e293b] w-full max-w-4xl h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-white/10">
+            <!-- Header -->
+            <div class="p-6 border-b border-white/10 flex justify-between items-center bg-[#0f172a]">
+                <div class="flex items-center gap-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white"><i class="fas fa-cog text-yellow-400 mr-2"></i>后台管理系统</h2>
+                        <p class="text-sm text-gray-400 mt-1">管理圣诞树模型和配饰素材库</p>
+                    </div>
+                    <span id="admin-badge" class="px-3 py-1 bg-green-500/20 text-green-400 text-xs rounded-full border border-green-500/30">
+                        <i class="fas fa-check-circle mr-1"></i>已验证
+                    </span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="changeAdminPassword()" class="text-sm text-gray-400 hover:text-white px-3 py-1 rounded hover:bg-white/5">
+                        <i class="fas fa-key mr-1"></i>修改密码
+                    </button>
+                    <button onclick="logoutAdmin()" class="text-sm text-red-400 hover:text-red-300 px-3 py-1 rounded hover:bg-red-500/10">
+                        <i class="fas fa-sign-out-alt mr-1"></i>退出
+                    </button>
+                    <button onclick="toggleAdmin()" class="text-gray-400 hover:text-white text-xl ml-2">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="flex-1 flex overflow-hidden">
+                <!-- Sidebar -->
+                <div class="w-64 bg-[#0f172a] border-r border-white/10 p-4 space-y-2">
+                    <button onclick="switchAdminTab('trees')" id="admin-tab-trees" class="w-full text-left px-4 py-3 rounded-lg bg-blue-600 text-white flex items-center gap-3">
+                        <i class="fas fa-tree"></i> 圣诞树管理
+                    </button>
+                    <button onclick="switchAdminTab('decorations')" id="admin-tab-decorations" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/5 text-gray-300 flex items-center gap-3">
+                        <i class="fas fa-star"></i> 配饰管理
+                    </button>
+                </div>
+
+                <!-- Main -->
+                <div class="flex-1 p-8 overflow-y-auto bg-[#1e293b]">
+                    
+                    <!-- Upload Section -->
+                    <div class="mb-8 p-6 border-2 border-dashed border-white/20 rounded-xl bg-white/5 hover:bg-white/10 transition text-center cursor-pointer relative" onclick="document.getElementById('file-upload').click()">
+                        <input type="file" id="file-upload" class="hidden" accept="image/png, image/jpeg" multiple onchange="handleFileUpload(this)">
+                        <i class="fas fa-cloud-upload-alt text-4xl text-blue-400 mb-3"></i>
+                        <h3 class="text-lg font-bold text-white">点击上传 PNG 图片</h3>
+                        <p class="text-sm text-gray-400 mt-1">支持透明背景 PNG，建议尺寸 500x500px 以上</p>
+                    </div>
+
+                    <!-- List -->
+                    <h3 class="text-lg font-bold mb-4 text-gray-200">当前素材库</h3>
+                    <div id="admin-asset-list" class="grid grid-cols-4 gap-4">
+                        <!-- Admin items injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CHANGE PASSWORD MODAL -->
+    <div id="change-password-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] hidden flex items-center justify-center p-4">
+        <div class="bg-[#1e293b] w-full max-w-md rounded-2xl shadow-2xl border border-white/10 p-6">
+            <h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-key text-yellow-400 mr-2"></i>修改管理员密码</h3>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-gray-400 block mb-1">当前密码</label>
+                    <input type="password" id="old-password" class="w-full bg-black/30 border border-white/20 rounded px-3 py-2 text-white focus:border-blue-400 focus:outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 block mb-1">新密码</label>
+                    <input type="password" id="new-password" class="w-full bg-black/30 border border-white/20 rounded px-3 py-2 text-white focus:border-blue-400 focus:outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 block mb-1">确认新密码</label>
+                    <input type="password" id="confirm-password" class="w-full bg-black/30 border border-white/20 rounded px-3 py-2 text-white focus:border-blue-400 focus:outline-none">
+                </div>
+                
+                <div id="change-pwd-error" class="text-red-400 text-sm hidden"></div>
+                
+                <div class="flex gap-3 mt-6">
+                    <button onclick="closeChangePasswordModal()" class="flex-1 py-2 rounded-lg border border-white/20 text-gray-300 hover:bg-white/5">取消</button>
+                    <button onclick="saveNewPassword()" class="flex-1 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- SECURITY CONFIG ---
+        const DEFAULT_PASSWORD = 'admin123';
+        const PASSWORD_KEY = 'xmas_admin_password_hash';
+        const SESSION_KEY = 'xmas_admin_session';
+        
+        // Simple hash function (not cryptographically secure, but sufficient for frontend demo)
+        // In production, use bcrypt or SHA-256 with salt
+        function simpleHash(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return Math.abs(hash).toString(16);
+        }
+
+        function getStoredPassword() {
+            return localStorage.getItem(PASSWORD_KEY) || simpleHash(DEFAULT_PASSWORD);
+        }
+
+        function isAdminSessionValid() {
+            const session = localStorage.getItem(SESSION_KEY);
+            if (!session) return false;
+            try {
+                const data = JSON.parse(session);
+                // Session expires after 2 hours
+                return (Date.now() - data.timestamp) < (2 * 60 * 60 * 1000);
+            } catch {
+                return false;
+            }
+        }
+
+        function setAdminSession() {
+            localStorage.setItem(SESSION_KEY, JSON.stringify({
+                timestamp: Date.now(),
+                token: simpleHash(Date.now().toString())
+            }));
+        }
+
+        function clearAdminSession() {
+            localStorage.removeItem(SESSION_KEY);
+        }
+
+        // --- PASSWORD MODAL LOGIC ---
+        function promptAdminAccess() {
+            const modal = document.getElementById('password-modal');
+            const hint = document.getElementById('first-time-hint');
+            
+            // Check if using default password
+            if (getStoredPassword() === simpleHash(DEFAULT_PASSWORD)) {
+                hint.classList.remove('hidden');
+            } else {
+                hint.classList.add('hidden');
+            }
+            
+            modal.classList.remove('hidden');
+            document.getElementById('admin-password').focus();
+        }
+
+        function closePasswordModal() {
+            document.getElementById('password-modal').classList.add('hidden');
+            document.getElementById('admin-password').value = '';
+            document.getElementById('password-error').classList.add('hidden');
+        }
+
+        function togglePasswordVisibility() {
+            const input = document.getElementById('admin-password');
+            const icon = document.getElementById('eye-icon');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+
+        function checkPassword() {
+            const input = document.getElementById('admin-password');
+            const error = document.getElementById('password-error');
+            const btn = document.getElementById('login-btn');
+            const modal = document.querySelector('#password-modal > div');
+            
+            const enteredHash = simpleHash(input.value);
+            const storedHash = getStoredPassword();
+            
+            if (enteredHash === storedHash) {
+                // Success
+                setAdminSession();
+                closePasswordModal();
+                toggleAdmin();
+                
+                // Visual feedback
+                btn.innerHTML = '<i class="fas fa-check"></i> 验证成功';
+                btn.classList.add('bg-green-600');
+            } else {
+                // Error
+                error.classList.remove('hidden');
+                modal.classList.add('shake');
+                input.classList.add('border-red-500');
+                
+                setTimeout(() => {
+                    modal.classList.remove('shake');
+                    input.classList.remove('border-red-500');
+                }, 500);
+                
+                input.value = '';
+                input.focus();
+            }
+        }
+
+        function logoutAdmin() {
+            clearAdminSession();
+            toggleAdmin();
+            // Visual feedback could be added here
+        }
+
+        // --- CHANGE PASSWORD ---
+        function changeAdminPassword() {
+            document.getElementById('change-password-modal').classList.remove('hidden');
+        }
+
+        function closeChangePasswordModal() {
+            document.getElementById('change-password-modal').classList.add('hidden');
+            document.getElementById('old-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+            document.getElementById('change-pwd-error').classList.add('hidden');
+        }
+
+        function saveNewPassword() {
+            const oldPwd = document.getElementById('old-password').value;
+            const newPwd = document.getElementById('new-password').value;
+            const confirmPwd = document.getElementById('confirm-password').value;
+            const error = document.getElementById('change-pwd-error');
+            
+            // Validation
+            if (simpleHash(oldPwd) !== getStoredPassword()) {
+                error.textContent = '当前密码错误';
+                error.classList.remove('hidden');
+                return;
+            }
+            
+            if (newPwd.length < 4) {
+                error.textContent = '新密码至少需要4位字符';
+                error.classList.remove('hidden');
+                return;
+            }
+            
+            if (newPwd !== confirmPwd) {
+                error.textContent = '两次输入的新密码不一致';
+                error.classList.remove('hidden');
+                return;
+            }
+            
+            // Save
+            localStorage.setItem(PASSWORD_KEY, simpleHash(newPwd));
+            closeChangePasswordModal();
+            
+            // Show success
+            alert('密码修改成功！请牢记新密码。');
+        }
+
+        // --- DATA & STATE ---
+        const DEFAULT_TREES = [
+            { id: 'tree1', url: 'https://images.unsplash.com/photo-1543589077-47d81606c1bf?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80', name: '经典绿树' },
+            { id: 'tree2', url: 'https://images.unsplash.com/photo-1512474932046-56394502221d?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80', name: '雪松' },
+            { id: 'tree3', url: 'https://images.unsplash.com/photo-1606836591695-4d58a73eba1e?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80', name: '装饰树' }
+        ];
+
+        const DEFAULT_DECORATIONS = [
+            { id: 'dec1', url: 'https://cdn-icons-png.flaticon.com/512/621/621873.png', name: '红球' },
+            { id: 'dec2', url: 'https://cdn-icons-png.flaticon.com/512/621/621880.png', name: '金星' },
+            { id: 'dec3', url: 'https://cdn-icons-png.flaticon.com/512/3720/3720472.png', name: '糖果' },
+            { id: 'dec4', url: 'https://cdn-icons-png.flaticon.com/512/837/837891.png', name: '礼盒' },
+            { id: 'dec5', url: 'https://cdn-icons-png.flaticon.com/512/3720/3720469.png', name: '铃铛' },
+            { id: 'dec6', url: 'https://cdn-icons-png.flaticon.com/512/2406/2406336.png', name: '圣诞老人' }
+        ];
+
+        let state = {
+            currentTree: DEFAULT_TREES[0],
+            decorations: [],
+            selectedId: null,
+            trees: [...DEFAULT_TREES],
+            assets: [...DEFAULT_DECORATIONS],
+            activeTab: 'decorations',
+            treeSize: '60',
+            adminTab: 'trees'
+        };
+
+        // --- INIT ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFromStorage();
+            initSnow();
+            renderSidebar();
+            setupCanvasInteractions();
+            updateTreeVisuals();
+            
+            // Check if already logged in (for session persistence)
+            if (isAdminSessionValid()) {
+                // Could auto-open admin here if needed
+            }
+        });
+
+        // --- STORAGE ---
+        function saveToStorage() {
+            try {
+                localStorage.setItem('xmas_builder_state', JSON.stringify({
+                    trees: state.trees,
+                    assets: state.assets
+                }));
+            } catch (e) {
+                console.warn('Storage limit exceeded');
+            }
+        }
+
+        function loadFromStorage() {
+            const saved = localStorage.getItem('xmas_builder_state');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                state.trees = parsed.trees || DEFAULT_TREES;
+                state.assets = parsed.assets || DEFAULT_DECORATIONS;
+            }
+        }
+
+        // --- RENDER SIDEBAR ---
+        function switchTab(tab) {
+            state.activeTab = tab;
+            document.getElementById('tab-decorations').className = tab === 'decorations' 
+                ? 'flex-1 py-3 text-sm font-medium text-yellow-400 border-b-2 border-yellow-400 bg-white/5'
+                : 'flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white';
+            document.getElementById('tab-trees').className = tab === 'trees'
+                ? 'flex-1 py-3 text-sm font-medium text-yellow-400 border-b-2 border-yellow-400 bg-white/5'
+                : 'flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white';
+            
+            renderSidebar();
+        }
+
+        function renderSidebar() {
+            const grid = document.getElementById('assets-grid');
+            grid.innerHTML = '';
+
+            if (state.activeTab === 'decorations') {
+                state.assets.forEach(asset => {
+                    const div = document.createElement('div');
+                    div.className = 'asset-item bg-white/5 rounded-lg p-2 cursor-pointer border border-white/5 hover:border-white/20 flex flex-col items-center gap-2';
+                    div.innerHTML = `
+                        <img src="${asset.url}" class="w-16 h-16 object-contain drop-shadow-md" draggable="false">
+                        <span class="text-xs text-gray-300 truncate w-full text-center">${asset.name}</span>
+                    `;
+                    div.onclick = () => addDecorationToTree(asset.url);
+                    grid.appendChild(div);
+                });
+            } else {
+                state.trees.forEach(tree => {
+                    const div = document.createElement('div');
+                    div.className = `asset-item bg-white/5 rounded-lg p-2 cursor-pointer border ${state.currentTree.id === tree.id ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/5 hover:border-white/20'} flex flex-col items-center gap-2`;
+                    div.innerHTML = `
+                        <img src="${tree.url}" class="w-16 h-16 object-cover rounded drop-shadow-md">
+                        <span class="text-xs text-gray-300 truncate w-full text-center">${tree.name}</span>
+                    `;
+                    div.onclick = () => selectTree(tree);
+                    grid.appendChild(div);
+                });
+            }
+        }
+
+        // --- TREE LOGIC ---
+        function selectTree(tree) {
+            state.currentTree = tree;
+            document.getElementById('current-tree-img').src = tree.url;
+            renderSidebar();
+        }
+
+        function changeTreeSize(size) {
+            state.treeSize = size;
+            updateTreeVisuals();
+        }
+
+        function updateTreeVisuals() {
+            const container = document.getElementById('tree-container');
+            let width, height;
+            if (state.treeSize === '45') { width = 300; height = 450; }
+            else if (state.treeSize === '60') { width = 400; height = 600; }
+            else { width = 500; height = 750; }
+
+            const screenH = window.innerHeight;
+            if (height > screenH * 0.8) {
+                const ratio = (screenH * 0.8) / height;
+                width *= ratio;
+                height *= ratio;
+            }
+
+            container.style.width = `${width}px`;
+            container.style.height = `${height}px`;
+        }
+
+        // --- DECORATION LOGIC ---
+        function addDecorationToTree(src) {
+            const id = 'dec_' + Date.now();
+            const randX = 40 + Math.random() * 20;
+            const randY = 20 + Math.random() * 60;
+
+            const dec = {
+                id,
+                src,
+                x: randX,
+                y: randY,
+                scale: 1,
+                rotation: 0,
+                zIndex: 10 + state.decorations.length
+            };
+
+            state.decorations.push(dec);
+            renderDecoration(dec);
+            selectDecoration(id);
+        }
+
+        function renderDecoration(dec) {
+            const layer = document.getElementById('decoration-layer');
+            const el = document.createElement('img');
+            el.src = dec.src;
+            el.id = dec.id;
+            el.className = 'tree-decoration w-12 h-12 object-contain';
+            el.style.left = `${dec.x}%`;
+            el.style.top = `${dec.y}%`;
+            el.style.transform = `translate(-50%, -50%) scale(${dec.scale}) rotate(${dec.rotation}deg)`;
+            el.style.zIndex = dec.zIndex;
+            
+            el.onmousedown = (e) => handleDragStart(e, dec.id);
+            el.ondblclick = () => deleteDecoration(dec.id);
+            el.onclick = (e) => {
+                e.stopPropagation();
+                selectDecoration(dec.id);
+            };
+
+            layer.appendChild(el);
+        }
+
+        function selectDecoration(id) {
+            if (state.selectedId) {
+                const prev = document.getElementById(state.selectedId);
+                if (prev) prev.classList.remove('selected');
+            }
+
+            state.selectedId = id;
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add('selected');
+                const panel = document.getElementById('properties-panel');
+                panel.classList.remove('translate-x-full');
+                
+                const dec = state.decorations.find(d => d.id === id);
+                document.getElementById('control-scale').value = dec.scale;
+                document.getElementById('scale-val').innerText = dec.scale + 'x';
+                document.getElementById('control-rotate').value = dec.rotation;
+                document.getElementById('rotate-val').innerText = dec.rotation + '°';
+            }
+        }
+
+        function deselectAll() {
+            if (state.selectedId) {
+                const prev = document.getElementById(state.selectedId);
+                if (prev) prev.classList.remove('selected');
+            }
+            state.selectedId = null;
+            document.getElementById('properties-panel').classList.add('translate-x-full');
+        }
+
+        function updateSelectedDecoration(type, value) {
+            if (!state.selectedId) return;
+            const dec = state.decorations.find(d => d.id === state.selectedId);
+            if (!dec) return;
+
+            if (type === 'scale') {
+                dec.scale = parseFloat(value);
+                document.getElementById('scale-val').innerText = dec.scale + 'x';
+            } else if (type === 'rotate') {
+                dec.rotation = parseInt(value);
+                document.getElementById('rotate-val').innerText = dec.rotation + '°';
+            }
+
+            const el = document.getElementById(dec.id);
+            el.style.transform = `translate(-50%, -50%) scale(${dec.scale}) rotate(${dec.rotation}deg)`;
+        }
+
+        function changeLayer(direction) {
+            if (!state.selectedId) return;
+            const dec = state.decorations.find(d => d.id === state.selectedId);
+            if (direction === 'up') dec.zIndex++;
+            else if (direction === 'down' && dec.zIndex > 0) dec.zIndex--;
+            
+            const el = document.getElementById(dec.id);
+            el.style.zIndex = dec.zIndex;
+        }
+
+        function deleteSelected() {
+            if (state.selectedId) deleteDecoration(state.selectedId);
+        }
+
+        function deleteDecoration(id) {
+            state.decorations = state.decorations.filter(d => d.id !== id);
+            const el = document.getElementById(id);
+            if (el) el.remove();
+            deselectAll();
+        }
+
+        function clearDecorations() {
+            state.decorations = [];
+            document.getElementById('decoration-layer').innerHTML = '';
+            deselectAll();
+        }
+
+        // --- DRAG & DROP ---
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        let draggedId = null;
+
+        function handleDragStart(e, id) {
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            draggedId = id;
+            selectDecoration(id);
+
+            const el = document.getElementById(id);
+            const rect = el.getBoundingClientRect();
+            const containerRect = document.getElementById('tree-container').getBoundingClientRect();
+
+            const mouseX = e.clientX - containerRect.left;
+            const mouseY = e.clientY - containerRect.top;
+            const elCenterX = rect.left + rect.width/2 - containerRect.left;
+            const elCenterY = rect.top + rect.height/2 - containerRect.top;
+
+            dragOffset.x = mouseX - elCenterX;
+            dragOffset.y = mouseY - elCenterY;
+        }
+
+        function setupCanvasInteractions() {
+            const container = document.getElementById('tree-container');
+            
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging || !draggedId) return;
+                
+                const containerRect = container.getBoundingClientRect();
+                let x = e.clientX - containerRect.left - dragOffset.x;
+                let y = e.clientY - containerRect.top - dragOffset.y;
+
+                let xPct = (x / containerRect.width) * 100;
+                let yPct = (y / containerRect.height) * 100;
+
+                const dec = state.decorations.find(d => d.id === draggedId);
+                if (dec) {
+                    dec.x = xPct;
+                    dec.y = yPct;
+                    const el = document.getElementById(draggedId);
+                    el.style.left = `${xPct}%`;
+                    el.style.top = `${yPct}%`;
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                isDragging = false;
+                draggedId = null;
+            });
+
+            document.getElementById('decoration-layer').addEventListener('click', (e) => {
+                if (e.target.id === 'decoration-layer') deselectAll();
+            });
+        }
+
+        // --- ADMIN PANEL ---
+        function toggleAdmin() {
+            const modal = document.getElementById('admin-modal');
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                renderAdminList();
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function switchAdminTab(tab) {
+            state.adminTab = tab;
+            const tBtn = document.getElementById('admin-tab-trees');
+            const dBtn = document.getElementById('admin-tab-decorations');
+            
+            if (tab === 'trees') {
+                tBtn.className = 'w-full text-left px-4 py-3 rounded-lg bg-blue-600 text-white flex items-center gap-3';
+                dBtn.className = 'w-full text-left px-4 py-3 rounded-lg hover:bg-white/5 text-gray-300 flex items-center gap-3';
+            } else {
+                dBtn.className = 'w-full text-left px-4 py-3 rounded-lg bg-blue-600 text-white flex items-center gap-3';
+                tBtn.className = 'w-full text-left px-4 py-3 rounded-lg hover:bg-white/5 text-gray-300 flex items-center gap-3';
+            }
+            
+            renderAdminList();
+        }
+
+        function handleFileUpload(input) {
+            const files = Array.from(input.files);
+            const isTree = state.adminTab === 'trees' || (!state.adminTab && document.getElementById('admin-tab-trees').classList.contains('bg-blue-600'));
+
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const newItem = {
+                        id: 'custom_' + Date.now() + Math.random(),
+                        url: e.target.result,
+                        name: file.name.split('.')[0]
+                    };
+
+                    if (isTree) state.trees.push(newItem);
+                    else state.assets.push(newItem);
+                    
+                    saveToStorage();
+                    renderAdminList();
+                    renderSidebar();
+                };
+                reader.readAsDataURL(file);
+            });
+            
+            input.value = '';
+        }
+
+        function renderAdminList() {
+            const list = document.getElementById('admin-asset-list');
+            list.innerHTML = '';
+            
+            const isTree = state.adminTab === 'trees' || (!state.adminTab && document.getElementById('admin-tab-trees').classList.contains('bg-blue-600'));
+            const items = isTree ? state.trees : state.assets;
+
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white/5 rounded p-3 flex flex-col gap-2 border border-white/10';
+                div.innerHTML = `
+                    <div class="h-24 bg-black/20 rounded flex items-center justify-center overflow-hidden">
+                        <img src="${item.url}" class="max-w-full max-h-full object-contain">
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-gray-300 truncate w-24">${item.name}</span>
+                        <button onclick="deleteAsset('${item.id}', ${isTree})" class="text-red-400 hover:text-red-300 text-xs"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function deleteAsset(id, isTree) {
+            if (isTree) state.trees = state.trees.filter(t => t.id !== id);
+            else state.assets = state.assets.filter(a => a.id !== id);
+            
+            saveToStorage();
+            renderAdminList();
+            renderSidebar();
+        }
+
+        // --- UTILS ---
+        function initSnow() {
+            const container = document.getElementById('snow-container');
+            const count = 50;
+            for (let i = 0; i < count; i++) {
+                const flake = document.createElement('div');
+                flake.className = 'snowflake';
+                flake.innerHTML = '❄';
+                flake.style.left = Math.random() * 100 + 'vw';
+                flake.style.animationDuration = (Math.random() * 3 + 2) + 's';
+                flake.style.opacity = Math.random();
+                flake.style.fontSize = (Math.random() * 10 + 10) + 'px';
+                container.appendChild(flake);
+            }
+        }
+
+        function saveDesign() {
+            alert("截图功能：在实际部署中，这里将调用 html2canvas 库将 DOM 转换为图片下载。");
+        }
+
+    </script>
+</body>
+</html>
